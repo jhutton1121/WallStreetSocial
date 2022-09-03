@@ -40,6 +40,7 @@ INSTALLED_APPS = [
 
     #own
     'raw_reddit_comments',
+    'pages',
 ]
 
 MIDDLEWARE = [
