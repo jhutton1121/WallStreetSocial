@@ -1,34 +1,50 @@
-import pandas as pd
+import json
 import datetime as dt
 from pmaw import PushshiftAPI
+from multiprocessing import cpu_count
 
 
-def get_reddit_comments(subreddit, before, after):
-    """Returns a dataframe containing comments from a particular subreddit between
+def get_reddit_comments(subreddit, before, after, num_workers):
+    """Returns a list containing comments from a particular subreddit between
        given date frame defined by before and after.
        Before and after variables must be converted to epoch time before calling them as arguments.
     """
     api = PushshiftAPI()
-    comments = api.search_comments(subreddit=subreddit, before=before, after=after)
-    comments_df = pd.DataFrame(comments)
-    comments_df = clean_comments_dataframe(comments_df)
-    comments_df.drop_duplicates()
-    return comments_df
+    comments = api.search_comments(subreddit=subreddit, before=before, after=after,num_workers = num_workers)
+    return [comment for comment in comments]
 
+def comment_seed(comment_list):
+    seed = []
+    for i, comment in enumerate(comment_list):
+        seed.append(
+            {
+                "model": "raw_reddit_comments.RawComment",
+                "pk": i,
+                "fields": {
+                    "comment_id": comment.get('id'),
+                    "comment_timestamp": comment.get('created_utc'),
+                    "comment_body": comment.get('body'),
+                    "comment_upvotes": comment.get('score')
+                }
+            }
+        )
+    return seed
 
-def clean_comments_dataframe(comments_df):
-    comments_df = comments_df.drop(
-        ['all_awardings', 'associated_award', 'author_flair_background_color', 'author_flair_css_class',
-         'author_flair_richtext',
-         'author_flair_template_id', 'author_flair_text', 'author_flair_text_color', 'author_flair_type',
-         'author_fullname', 'author_patreon_flair', 'author_premium', 'awarders', 'collapsed_because_crowd_control',
-         'comment_type', 'gildings', 'is_submitter', 'locked', 'no_follow', 'send_replies', 'top_awarded_type',
-         'treatment_tags', 'author_cakeday', 'distinguished'], axis=1)
-    return comments_df
-
-
+subreddit = 'wallstreetbets'
 before = int(dt.datetime(2021, 1, 2, 12, 0).timestamp())
 after = int(dt.datetime(2021, 1, 2, 11, 0).timestamp())
+num_workers = cpu_count() - 1
 
-comments = get_reddit_comments('wallstreetbets', before, after)
-comments.head()
+
+def populate():
+    comments = get_reddit_comments(subreddit, before, after, num_workers)
+    seed = comment_seed(comments)
+    with open('comment_seed.jsonl', 'w') as outfile:
+        for entry in seed:
+            json.dump(entry, outfile)
+            outfile.write('\n')
+    
+
+
+if __name__ == "__main__":
+    populate()
